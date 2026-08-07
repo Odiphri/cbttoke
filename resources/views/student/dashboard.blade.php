@@ -46,6 +46,30 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="col-6 col-md-3">
+                            <div class="card bg-primary text-white h-100">
+                                <div class="card-body d-flex flex-column justify-content-center">
+                                    <div class="stat-number">{{ $lessonStats['new_notes'] ?? 0 }}</div>
+                                    <div class="stat-label">New Lesson Notes</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="card bg-info text-white h-100">
+                                <div class="card-body d-flex flex-column justify-content-center">
+                                    <div class="stat-number">{{ $lessonStats['exercises_due'] ?? 0 }}</div>
+                                    <div class="stat-label">Exercises Due</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="card bg-secondary text-white h-100">
+                                <div class="card-body d-flex flex-column justify-content-center">
+                                    <div class="stat-number">{{ $lessonStats['awaiting_marking'] ?? 0 }}</div>
+                                    <div class="stat-label">Awaiting Marking</div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -65,6 +89,14 @@
                             <i class="fas fa-clipboard-list me-2"></i>
                             <span class="d-none d-md-inline">View Exams</span>
                             <span class="d-md-none">Exams</span>
+                        </a>
+                        <a href="{{ route('student.lesson-notes.index') }}" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-book-open me-2"></i>
+                            <span>Lesson Notes</span>
+                        </a>
+                        <a href="{{ route('student.exercises.index') }}" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-tasks me-2"></i>
+                            <span>Exercises</span>
                         </a>
                         <a href="{{ route('student.payments') }}" class="btn btn-outline-success w-100">
                             <i class="fas fa-money-bill-wave me-2"></i>

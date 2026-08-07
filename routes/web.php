@@ -19,17 +19,24 @@ use App\Http\Controllers\HOD\DashboardController as HODDashboard;
 use App\Http\Controllers\HOD\ExamController as HODExamController;
 use App\Http\Controllers\HOD\OverrideController as HODOverrideController;
 use App\Http\Controllers\HOD\StudentController as HODStudentController;
+use App\Http\Controllers\LessonNoteReviewController;
 use App\Http\Controllers\Prefect\DashboardController as PrefectDashboard;
 use App\Http\Controllers\Prefect\StudentController as PrefectStudentController;
+use App\Http\Controllers\Student\ExerciseController as StudentExerciseController;
 use App\Http\Controllers\Student\DirectoryController as StudentDirectoryController;
 use App\Http\Controllers\Student\DashboardController as StudentDashboard;
 use App\Http\Controllers\Student\ExamController as StudentExamController;
+use App\Http\Controllers\Student\LessonNoteController as StudentLessonNoteController;
 use App\Http\Controllers\Student\ProfileController as StudentProfileController;
 use App\Http\Controllers\Student\RequestController as StudentRequestController;
 use App\Http\Controllers\Teacher\AttendanceController as TeacherAttendanceController;
 use App\Http\Controllers\Teacher\ClassController as TeacherClassController;
 use App\Http\Controllers\Teacher\DashboardController as TeacherDashboard;
 use App\Http\Controllers\Teacher\ExamController as TeacherExamController;
+use App\Http\Controllers\Teacher\ExerciseQuestionController as TeacherExerciseQuestionController;
+use App\Http\Controllers\Teacher\ExerciseSubmissionController as TeacherExerciseSubmissionController;
+use App\Http\Controllers\Teacher\LessonNoteController as TeacherLessonNoteController;
+use App\Http\Controllers\Teacher\LessonExerciseController as TeacherLessonExerciseController;
 use App\Http\Controllers\Teacher\QuestionController as TeacherQuestionController;
 use App\Http\Controllers\Teacher\ResultController as TeacherResultController;
 use App\Http\Controllers\Teacher\ProfileController as TeacherProfileController;
@@ -56,6 +63,15 @@ Route::middleware('auth')->group(function () {
 // Admin Routes
 Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('dashboard', [AdminDashboard::class, 'index'])->name('dashboard');
+    Route::get('lesson-notes', [LessonNoteReviewController::class, 'index'])->name('lesson-notes.index');
+    Route::get('lesson-notes/archives', [LessonNoteReviewController::class, 'archives'])->name('lesson-notes.archives');
+    Route::get('lesson-notes/{lessonNote}', [LessonNoteReviewController::class, 'show'])->name('lesson-notes.show');
+    Route::post('lesson-notes/{lessonNote}/approve', [LessonNoteReviewController::class, 'approve'])->name('lesson-notes.approve');
+    Route::post('lesson-notes/{lessonNote}/return', [LessonNoteReviewController::class, 'return'])->name('lesson-notes.return');
+    Route::post('lesson-notes/{lessonNote}/reject', [LessonNoteReviewController::class, 'reject'])->name('lesson-notes.reject');
+    Route::post('lesson-notes/{lessonNote}/archive', [LessonNoteReviewController::class, 'archive'])->name('lesson-notes.archive');
+    Route::post('lesson-notes/{lessonNote}/restore', [LessonNoteReviewController::class, 'restore'])->name('lesson-notes.restore');
+    Route::delete('lesson-notes/{lessonNote}', [LessonNoteReviewController::class, 'destroy'])->name('lesson-notes.destroy');
     Route::get('users', [AdminDashboard::class, 'users'])->name('users');
     Route::post('users', [AdminDashboard::class, 'storeAdminUser'])->name('users.store');
     Route::put('users/{user}/role', [AdminDashboard::class, 'updateUserRole'])->name('users.role.update');
@@ -113,6 +129,15 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->name('admin.')->grou
 // HOD Routes
 Route::middleware(['auth', 'role:hod'])->prefix('hod')->name('hod.')->group(function () {
     Route::get('dashboard', [HODDashboard::class, 'index'])->name('dashboard');
+    Route::get('lesson-notes', [LessonNoteReviewController::class, 'index'])->name('lesson-notes.index');
+    Route::get('lesson-notes/archives', [LessonNoteReviewController::class, 'archives'])->name('lesson-notes.archives');
+    Route::get('lesson-notes/{lessonNote}', [LessonNoteReviewController::class, 'show'])->name('lesson-notes.show');
+    Route::post('lesson-notes/{lessonNote}/approve', [LessonNoteReviewController::class, 'approve'])->name('lesson-notes.approve');
+    Route::post('lesson-notes/{lessonNote}/return', [LessonNoteReviewController::class, 'return'])->name('lesson-notes.return');
+    Route::post('lesson-notes/{lessonNote}/reject', [LessonNoteReviewController::class, 'reject'])->name('lesson-notes.reject');
+    Route::post('lesson-notes/{lessonNote}/archive', [LessonNoteReviewController::class, 'archive'])->name('lesson-notes.archive');
+    Route::post('lesson-notes/{lessonNote}/restore', [LessonNoteReviewController::class, 'restore'])->name('lesson-notes.restore');
+    Route::delete('lesson-notes/{lessonNote}', [LessonNoteReviewController::class, 'destroy'])->name('lesson-notes.destroy');
     Route::get('exams', [HODExamController::class, 'index'])->name('exams');
     Route::get('students', [UserManagementController::class, 'students'])->name('students');
     Route::post('students', [UserManagementController::class, 'storeStudent'])->name('students.store');
@@ -210,6 +235,30 @@ Route::middleware(['auth', 'role:cbt_personnel'])->prefix('cbt')->name('cbt.')->
 // Teacher Routes
 Route::middleware(['auth', 'role:teacher'])->prefix('teacher')->name('teacher.')->group(function () {
     Route::get('dashboard', [TeacherDashboard::class, 'index'])->name('dashboard');
+    Route::get('lesson-notes', [TeacherLessonNoteController::class, 'index'])->name('lesson-notes.index');
+    Route::get('lesson-notes/create', [TeacherLessonNoteController::class, 'create'])->name('lesson-notes.create');
+    Route::post('lesson-notes', [TeacherLessonNoteController::class, 'store'])->name('lesson-notes.store');
+    Route::post('lesson-notes/inline-image', [TeacherLessonNoteController::class, 'uploadInlineImage'])->name('lesson-notes.inline-image');
+    Route::post('lesson-notes/ai-draft', [TeacherLessonNoteController::class, 'generateAiDraft'])->name('lesson-notes.ai-draft');
+    Route::post('lesson-notes/pdf-draft', [TeacherLessonNoteController::class, 'generateDraftFromPdf'])->name('lesson-notes.pdf-draft');
+    Route::post('lesson-notes/continue-draft', [TeacherLessonNoteController::class, 'continueAiDraft'])->name('lesson-notes.continue-draft');
+    Route::post('lesson-notes/exercise-draft', [TeacherLessonNoteController::class, 'generateExerciseDraft'])->name('lesson-notes.exercise-draft');
+    Route::get('lesson-notes/{lessonNote}', [TeacherLessonNoteController::class, 'show'])->name('lesson-notes.show');
+    Route::get('lesson-notes/{lessonNote}/edit', [TeacherLessonNoteController::class, 'edit'])->name('lesson-notes.edit');
+    Route::put('lesson-notes/{lessonNote}', [TeacherLessonNoteController::class, 'update'])->name('lesson-notes.update');
+    Route::post('lesson-notes/{lessonNote}/submit', [TeacherLessonNoteController::class, 'submit'])->name('lesson-notes.submit');
+    Route::post('lesson-notes/{lessonNote}/withdraw', [TeacherLessonNoteController::class, 'withdraw'])->name('lesson-notes.withdraw');
+    Route::delete('lesson-notes/{lessonNote}/attachments/{attachment}', [TeacherLessonNoteController::class, 'destroyAttachment'])->name('lesson-notes.attachments.destroy');
+    Route::get('lesson-notes/{lessonNote}/exercise', [TeacherLessonExerciseController::class, 'show'])->name('lesson-notes.exercise.show');
+    Route::post('lesson-notes/{lessonNote}/questions', [TeacherExerciseQuestionController::class, 'store'])->name('lesson-notes.questions.store');
+    Route::post('lesson-notes/{lessonNote}/questions/ai-generate', [TeacherExerciseQuestionController::class, 'generateWithAi'])->name('lesson-notes.questions.ai-generate');
+    Route::put('lesson-notes/{lessonNote}/questions/{question}', [TeacherExerciseQuestionController::class, 'update'])->name('lesson-notes.questions.update');
+    Route::delete('lesson-notes/{lessonNote}/questions/{question}', [TeacherExerciseQuestionController::class, 'destroy'])->name('lesson-notes.questions.destroy');
+    Route::get('exercises/{lessonExercise}/submissions', [TeacherExerciseSubmissionController::class, 'index'])->name('exercises.submissions.index');
+    Route::get('exercises/{lessonExercise}/submissions/{attempt}/mark', [TeacherExerciseSubmissionController::class, 'edit'])->name('exercises.submissions.mark');
+    Route::put('exercises/{lessonExercise}/submissions/{attempt}', [TeacherExerciseSubmissionController::class, 'update'])->name('exercises.submissions.update');
+    Route::delete('exercises/{lessonExercise}/submissions/{attempt}', [TeacherExerciseSubmissionController::class, 'destroy'])->name('exercises.submissions.destroy');
+    Route::post('exercises/{lessonExercise}/students/{student}/retry', [TeacherExerciseSubmissionController::class, 'grantRetry'])->name('exercises.retry');
     Route::get('classes', [TeacherClassController::class, 'index'])->name('classes');
     Route::get('students', [TeacherStudentController::class, 'index'])->name('students');
     Route::post('students', [UserManagementController::class, 'storeStudent'])->name('students.store');
@@ -263,6 +312,13 @@ Route::middleware(['auth', 'role:teacher'])->prefix('teacher')->name('teacher.')
 // Prefect Routes
 Route::middleware(['auth', 'role:prefect'])->prefix('prefect')->name('prefect.')->group(function () {
     Route::get('dashboard', [PrefectDashboard::class, 'index'])->name('dashboard');
+    Route::get('lesson-notes', [StudentLessonNoteController::class, 'index'])->name('lesson-notes.index');
+    Route::get('lesson-notes/{lessonNote}', [StudentLessonNoteController::class, 'show'])->name('lesson-notes.show');
+    Route::get('exercises', [StudentExerciseController::class, 'index'])->name('exercises.index');
+    Route::get('exercises/{lessonExercise}', [StudentExerciseController::class, 'show'])->name('exercises.show');
+    Route::post('exercises/{lessonExercise}/attempts/{attempt}/save', [StudentExerciseController::class, 'save'])->name('exercises.save');
+    Route::post('exercises/{lessonExercise}/attempts/{attempt}/submit', [StudentExerciseController::class, 'submit'])->name('exercises.submit');
+    Route::get('exercises/{lessonExercise}/attempts/{attempt}/result', [StudentExerciseController::class, 'result'])->name('exercises.result');
     Route::get('exams', [StudentExamController::class, 'index'])->name('exams');
     Route::get('exams/{exam}', [StudentExamController::class, 'show'])->name('exams.show');
     Route::post('exams/{exam}', [StudentExamController::class, 'store'])->name('exams.store');
@@ -279,6 +335,13 @@ Route::middleware(['auth', 'role:prefect'])->prefix('prefect')->name('prefect.')
 // student academic and personal tools because prefects are also students.
 Route::middleware(['auth', 'role:student,prefect'])->prefix('student')->name('student.')->group(function () {
     Route::get('dashboard', [StudentDashboard::class, 'index'])->name('dashboard');
+    Route::get('lesson-notes', [StudentLessonNoteController::class, 'index'])->name('lesson-notes.index');
+    Route::get('lesson-notes/{lessonNote}', [StudentLessonNoteController::class, 'show'])->name('lesson-notes.show');
+    Route::get('exercises', [StudentExerciseController::class, 'index'])->name('exercises.index');
+    Route::get('exercises/{lessonExercise}', [StudentExerciseController::class, 'show'])->name('exercises.show');
+    Route::post('exercises/{lessonExercise}/attempts/{attempt}/save', [StudentExerciseController::class, 'save'])->name('exercises.save');
+    Route::post('exercises/{lessonExercise}/attempts/{attempt}/submit', [StudentExerciseController::class, 'submit'])->name('exercises.submit');
+    Route::get('exercises/{lessonExercise}/attempts/{attempt}/result', [StudentExerciseController::class, 'result'])->name('exercises.result');
     Route::get('exams', [StudentExamController::class, 'index'])->name('exams');
     Route::get('exams/{exam}', [StudentExamController::class, 'show'])->name('exams.show');
     Route::post('exams/{exam}', [StudentExamController::class, 'store'])->name('exams.store');

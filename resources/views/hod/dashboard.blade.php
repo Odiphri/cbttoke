@@ -18,6 +18,30 @@
                         <div class="col-md-3">
                             <div class="card text-center">
                                 <div class="card-body">
+                                    <h3>{{ $pendingLessonNotesCount }}</h3>
+                                    <p>Lesson Notes Awaiting Approval</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h3>{{ $approvedLessonNotesThisTermCount }}</h3>
+                                    <p>Approved This Term</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
+                                    <h3>{{ $returnedLessonNotesThisTermCount }}</h3>
+                                    <p>Returned / Rejected</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body">
                                     <h3>{{ \App\Models\User::where('role', 'student')->count() }}</h3>
                                     <p>Total Students</p>
                                 </div>

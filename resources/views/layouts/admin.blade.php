@@ -17,6 +17,25 @@
         $schoolName = $schoolSettings?->school_name ?? 'TOKE Schools';
         $schoolIcon = $schoolSettings?->logo_path ? asset('storage/' . $schoolSettings->logo_path) : asset('images/default-school-icon.svg');
         $defaultAvatar = asset('images/default-avatar.svg');
+        $dashboardRoute = match(Auth::user()->role ?? null) {
+            'admin' => route('admin.dashboard'),
+            'teacher' => route('teacher.dashboard'),
+            'student' => route('student.dashboard'),
+            'prefect' => route('prefect.dashboard'),
+            'hod' => route('hod.dashboard'),
+            'cbt_personnel' => route('cbt.dashboard'),
+            default => route('home'),
+        };
+        $isFormPage = request()->routeIs(
+            '*.create',
+            '*.edit',
+            '*.mark',
+            '*.take',
+            'teacher.lesson-notes.create',
+            'teacher.lesson-notes.edit',
+            'student.exercises.show',
+            'prefect.exercises.show'
+        );
     @endphp
     <title>@yield('title', $portalTitle) - {{ $schoolName }} CBT Portal</title>
     <link rel="icon" href="{{ $schoolIcon }}" type="image/svg+xml">
@@ -707,6 +726,11 @@
             </a>
             
             <div class="sidebar-section">Academic</div>
+            <a href="{{ route('admin.lesson-notes.index') }}" class="sidebar-item {{ request()->routeIs('admin.lesson-notes*') ? 'active' : '' }}">
+                <i class="fas fa-book-open me-2"></i> Lesson Notes
+                @php($adminPendingLessonNotes = \App\Models\LessonNote::where('status', 'pending')->count())
+                @if($adminPendingLessonNotes > 0)<span class="badge bg-warning text-dark float-end">{{ $adminPendingLessonNotes }}</span>@endif
+            </a>
             <a href="{{ route('admin.classes') }}" class="sidebar-item {{ request()->routeIs('admin.classes*') ? 'active' : '' }}">
                 <i class="fas fa-school me-2"></i> Classes
             </a>
@@ -756,6 +780,9 @@
             </a>
             
             <div class="sidebar-section">Academic</div>
+            <a href="{{ route('teacher.lesson-notes.index') }}" class="sidebar-item {{ request()->routeIs('teacher.lesson-notes*') || request()->routeIs('teacher.exercises*') ? 'active' : '' }}">
+                <i class="fas fa-book-open me-2"></i> Lesson Notes
+            </a>
             <a href="{{ route('teacher.exams') }}" class="sidebar-item {{ request()->routeIs('teacher.exams*') ? 'active' : '' }}">
                 <i class="fas fa-clipboard-list me-2"></i> Exams
             </a>
@@ -820,6 +847,12 @@
             @endif
             
             <div class="sidebar-section">Academic</div>
+            <a href="{{ route('student.lesson-notes.index') }}" class="sidebar-item {{ request()->routeIs('student.lesson-notes*') || request()->routeIs('prefect.lesson-notes*') ? 'active' : '' }}">
+                <i class="fas fa-book-open me-2"></i> Lesson Notes
+            </a>
+            <a href="{{ route('student.exercises.index') }}" class="sidebar-item {{ request()->routeIs('student.exercises*') || request()->routeIs('prefect.exercises*') ? 'active' : '' }}">
+                <i class="fas fa-tasks me-2"></i> Exercises
+            </a>
             <a href="{{ route(Auth::user()->role === 'prefect' ? 'prefect.exams' : 'student.exams') }}" class="sidebar-item {{ request()->routeIs('student.exams*') || request()->routeIs('prefect.exams*') ? 'active' : '' }}">
                 <i class="fas fa-clipboard-list me-2"></i> Exams
             </a>
@@ -847,6 +880,11 @@
             </a>
             
             <div class="sidebar-section">Academic</div>
+            <a href="{{ route('hod.lesson-notes.index') }}" class="sidebar-item {{ request()->routeIs('hod.lesson-notes*') ? 'active' : '' }}">
+                <i class="fas fa-book-open me-2"></i> Lesson Notes
+                @php($hodPendingLessonNotes = \App\Models\LessonNote::where('status', 'pending')->count())
+                @if($hodPendingLessonNotes > 0)<span class="badge bg-warning text-dark float-end">{{ $hodPendingLessonNotes }}</span>@endif
+            </a>
             <a href="{{ route('hod.exams') }}" class="sidebar-item {{ request()->routeIs('hod.exams*') ? 'active' : '' }}">
                 <i class="fas fa-clipboard-list me-2"></i> Exams
             </a>
@@ -964,7 +1002,7 @@
             <h1 class="page-title">@yield('title', $portalTitle)</h1>
             <div class="top-actions">
                 @unless(request()->routeIs('*.dashboard'))
-                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="history.length > 1 ? history.back() : window.location.assign('{{ route('home') }}')">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-smart-back data-fallback-url="{{ $dashboardRoute }}">
                     <i class="fas fa-arrow-left me-1"></i> Back
                 </button>
                 @endunless
@@ -1023,6 +1061,61 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+(() => {
+    const currentEntry = {
+        url: window.location.href,
+        path: window.location.pathname + window.location.search,
+        isForm: @json($isFormPage),
+        at: Date.now()
+    };
+    const storageKey = 'portalNavigationStack';
+    const maxEntries = 30;
+    let stack = [];
+
+    try {
+        stack = JSON.parse(sessionStorage.getItem(storageKey) || '[]');
+    } catch (error) {
+        stack = [];
+    }
+
+    const lastEntry = stack[stack.length - 1];
+    if (!lastEntry || lastEntry.path !== currentEntry.path) {
+        stack = stack.filter((entry) => entry && entry.path !== currentEntry.path);
+        stack.push(currentEntry);
+        stack = stack.slice(-maxEntries);
+        sessionStorage.setItem(storageKey, JSON.stringify(stack));
+    }
+
+    document.querySelectorAll('[data-smart-back]').forEach((button) => {
+        button.addEventListener('click', () => {
+            const fallbackUrl = button.dataset.fallbackUrl || '{{ $dashboardRoute }}';
+            let storedStack = [];
+
+            try {
+                storedStack = JSON.parse(sessionStorage.getItem(storageKey) || '[]');
+            } catch (error) {
+                storedStack = [];
+            }
+
+            storedStack = storedStack.filter((entry) => entry && entry.path !== currentEntry.path);
+            const destinationIndex = storedStack
+                .map((entry, index) => ({ entry, index }))
+                .reverse()
+                .find((item) => !item.entry.isForm)?.index;
+
+            const destination = destinationIndex === undefined ? null : storedStack[destinationIndex];
+
+            if (destinationIndex !== undefined) {
+                storedStack = storedStack.slice(0, destinationIndex);
+            }
+
+            sessionStorage.setItem(storageKey, JSON.stringify(storedStack.slice(-maxEntries)));
+
+            window.location.assign(destination?.url || fallbackUrl);
+        });
+    });
+})();
+
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
     sidebar.classList.toggle('active');

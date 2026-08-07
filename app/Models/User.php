@@ -104,6 +104,16 @@ class User extends Authenticatable
         return $this->hasMany(Exam::class, 'created_by');
     }
 
+    public function lessonNotes(): HasMany
+    {
+        return $this->hasMany(LessonNote::class, 'teacher_id');
+    }
+
+    public function exerciseAttempts(): HasMany
+    {
+        return $this->hasMany(ExerciseAttempt::class, 'student_id');
+    }
+
     public function examAttempts(): HasMany
     {
         return $this->hasMany(ExamAttempt::class, 'student_id');

@@ -44,6 +44,11 @@ class AcademicSession extends Model
         return $this->belongsTo(User::class, 'updated_by');
     }
 
+    public function lessonNotes()
+    {
+        return $this->hasMany(LessonNote::class);
+    }
+
     public function scopeActive($query)
     {
         return $query->where('is_active', true);

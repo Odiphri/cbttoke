@@ -15,6 +15,7 @@ use App\Models\SchoolSetting;
 use App\Models\Attendance;
 use App\Models\ChangeRequest;
 use App\Models\Override;
+use App\Models\LessonNote;
 use App\Services\AIService;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
@@ -42,6 +43,8 @@ class DashboardController extends Controller
             'unpaid_students' => Payment::where('status', 'unpaid')->count(),
             'pending_requests' => ChangeRequest::where('status', 'pending')->count(),
             'active_overrides' => Override::where('is_active', true)->count(),
+            'pending_lesson_notes' => LessonNote::where('status', LessonNote::STATUS_PENDING)->count(),
+            'approved_lesson_notes' => LessonNote::where('status', LessonNote::STATUS_APPROVED)->count(),
         ];
 
         $recentUsers = User::where('role', '!=', 'admin')->latest()->take(5)->get();

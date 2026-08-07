@@ -9,6 +9,9 @@ use App\Models\Exam;
 use App\Models\ExamAttempt;
 use App\Models\Payment;
 use App\Models\Attendance;
+use App\Models\ExerciseAttempt;
+use App\Models\LessonExercise;
+use App\Models\LessonNote;
 use Illuminate\Support\Collection;
 
 class DashboardController extends Controller
@@ -32,7 +35,8 @@ class DashboardController extends Controller
                     'present' => 0,
                     'absent' => 0,
                     'total' => 0
-                ]
+                ],
+                'lessonStats' => ['new_notes' => 0, 'exercises_due' => 0, 'awaiting_marking' => 0],
             ]);
         }
         
@@ -79,13 +83,22 @@ class DashboardController extends Controller
                 ->count(),
             'total' => Attendance::where('student_id', $student->id)->count()
         ];
+
+        $lessonStats = [
+            'new_notes' => LessonNote::approved()->whereIn('school_class_id', $eligibleClassIds)->where('published_at', '>=', now()->subDays(7))->count(),
+            'exercises_due' => LessonExercise::whereHas('lessonNote', fn ($query) => $query->approved()->whereIn('school_class_id', $eligibleClassIds))
+                ->where(fn ($query) => $query->whereNull('due_at')->orWhere('due_at', '>=', now()))
+                ->count(),
+            'awaiting_marking' => ExerciseAttempt::where('student_id', $student->id)->where('status', ExerciseAttempt::STATUS_AWAITING_MARKING)->count(),
+        ];
         
         return view('student.dashboard', compact(
             'student',
             'recentExams',
             'examStats',
             'paymentStatus',
-            'attendanceStats'
+            'attendanceStats',
+            'lessonStats'
         ));
     }
 

@@ -7,6 +7,22 @@
     <!-- Statistics Cards -->
     <div class="row g-3 g-md-4 mb-4">
         <div class="col-6 col-md-3">
+            <div class="card text-center bg-light h-100">
+                <div class="card-body d-flex flex-column justify-content-center">
+                    <div class="stat-number">{{ $stats['pending_lesson_notes'] }}</div>
+                    <div class="stat-label">Pending Lesson Notes</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card text-center bg-light h-100">
+                <div class="card-body d-flex flex-column justify-content-center">
+                    <div class="stat-number">{{ $stats['approved_lesson_notes'] }}</div>
+                    <div class="stat-label">Approved Lesson Notes</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
             <div class="card text-center bg-primary text-white h-100">
                 <div class="card-body d-flex flex-column justify-content-center">
                     <div class="stat-number">{{ $stats['total_users'] }}</div>

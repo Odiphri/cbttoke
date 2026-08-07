@@ -43,6 +43,11 @@ class SchoolClass extends Model
         return $this->hasMany(Exam::class);
     }
 
+    public function lessonNotes(): HasMany
+    {
+        return $this->hasMany(LessonNote::class);
+    }
+
     
     public function teachers(): BelongsToMany
     {
