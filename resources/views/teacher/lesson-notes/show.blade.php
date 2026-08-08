@@ -6,6 +6,7 @@
 <div class="d-flex justify-content-between flex-wrap gap-2 mb-3">
     <div><h2 class="h4">{{ $note->title }}</h2><span class="badge {{ $note->statusBadgeClass() }}">{{ $note->statusLabel() }}</span></div>
     <div>
+        @include('lesson-notes.partials.subject-export-buttons', ['note' => $note, 'routeName' => 'teacher.lesson-notes.exports.subject', 'includeTeacher' => true])
         @if($note->isEditable())<a class="btn btn-outline-secondary" href="{{ route('teacher.lesson-notes.edit', $note) }}"><i class="fas fa-edit me-1"></i> Edit</a>@endif
         @if($note->isEditable())<form class="d-inline" method="POST" action="{{ route('teacher.lesson-notes.submit', $note) }}">@csrf<button class="btn btn-primary-custom"><i class="fas fa-paper-plane me-1"></i> Submit</button></form>@endif
         @if(in_array($note->status, ['pending','approved'], true))<form class="d-inline" method="POST" action="{{ route('teacher.lesson-notes.withdraw', $note) }}">@csrf<button class="btn btn-outline-danger">Withdraw</button></form>@endif

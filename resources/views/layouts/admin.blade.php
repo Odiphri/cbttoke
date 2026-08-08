@@ -759,11 +759,26 @@
             <a href="{{ route('admin.overrides') }}" class="sidebar-item {{ request()->routeIs('admin.overrides*') ? 'active' : '' }}">
                 <i class="fas fa-shield-alt me-2"></i> Overrides
             </a>
+            <a href="{{ route('admin.exercises') }}" class="sidebar-item {{ request()->routeIs('admin.exercises*') ? 'active' : '' }}">
+                <i class="fas fa-pen-alt me-2"></i> Exercises
+            </a>
+            <a href="{{ route('admin.results') }}" class="sidebar-item {{ request()->routeIs('admin.results*') ? 'active' : '' }}">
+                <i class="fas fa-chart-bar me-2"></i> Results
+            </a>
             <a href="{{ route('admin.monitor') }}" class="sidebar-item {{ request()->routeIs('admin.monitor*') ? 'active' : '' }}">
                 <i class="fas fa-eye me-2"></i> Monitor
             </a>
             <a href="{{ route('traffic.index') }}" class="sidebar-item {{ request()->routeIs('traffic*') ? 'active' : '' }}">
                 <i class="fas fa-chart-line me-2"></i> Traffic
+            </a>
+            <a href="{{ route('admin.reports') }}" class="sidebar-item {{ request()->routeIs('admin.reports*') ? 'active' : '' }}">
+                <i class="fas fa-file-alt me-2"></i> Reports
+            </a>
+            <a href="{{ route('admin.teacher-workload') }}" class="sidebar-item {{ request()->routeIs('admin.teacher-workload*') ? 'active' : '' }}">
+                <i class="fas fa-user-clock me-2"></i> Teacher Workload
+            </a>
+            <a href="{{ route('admin.lesson-note-coverage') }}" class="sidebar-item {{ request()->routeIs('admin.lesson-note-coverage*') ? 'active' : '' }}">
+                <i class="fas fa-calendar-check me-2"></i> Note Coverage
             </a>
             
             <div class="sidebar-divider"></div>

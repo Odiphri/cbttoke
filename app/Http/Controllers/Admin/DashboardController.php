@@ -5,10 +5,13 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\User;
+use App\Models\AcademicSession;
 use App\Models\SchoolClass;
 use App\Models\Subject;
 use App\Models\Exam;
 use App\Models\ExamAttempt;
+use App\Models\ExerciseAttempt;
+use App\Models\LessonExercise;
 use App\Models\Payment;
 use App\Models\Question;
 use App\Models\SchoolSetting;
@@ -17,6 +20,7 @@ use App\Models\ChangeRequest;
 use App\Models\Override;
 use App\Models\LessonNote;
 use App\Services\AIService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\Models\Role;
@@ -48,8 +52,12 @@ class DashboardController extends Controller
         ];
 
         $recentUsers = User::where('role', '!=', 'admin')->latest()->take(5)->get();
-        $recentExams = Exam::latest()->take(5)->get();
-        $pendingRequests = ChangeRequest::where('status', 'pending')->latest()->take(5)->get();
+        $recentExams = Exam::with(['subject', 'schoolClass'])->latest()->take(5)->get();
+        $pendingRequests = ChangeRequest::with('student')->where('status', 'pending')->latest()->take(5)->get();
+        $needsAttention = $this->needsAttention();
+        $recentActivity = $this->recentActivity();
+        $teacherHighlights = $this->teacherHighlights();
+        $academicHealth = $this->academicHealth();
 
         $paymentStats = $this->getPaymentStats();
         $attendanceStats = $this->getAttendanceStats();
@@ -62,8 +70,448 @@ class DashboardController extends Controller
             'pendingRequests',
             'paymentStats',
             'attendanceStats',
-            'examStats'
+            'examStats',
+            'needsAttention',
+            'recentActivity',
+            'teacherHighlights',
+            'academicHealth'
         ));
+    }
+
+    public function reports(Request $request)
+    {
+        $activeSession = AcademicSession::active()->first();
+        $sessionId = $request->integer('academic_session_id') ?: $activeSession?->id;
+        $classId = $request->integer('school_class_id') ?: null;
+        $subjectId = $request->integer('subject_id') ?: null;
+
+        $submittedExamAttempts = ExamAttempt::submitted()
+            ->whereHas('exam', fn ($query) => $query
+                ->when($classId, fn ($query) => $query->where('school_class_id', $classId))
+                ->when($subjectId, fn ($query) => $query->where('subject_id', $subjectId)));
+
+        $exerciseAttempts = ExerciseAttempt::whereIn('status', [ExerciseAttempt::STATUS_SUBMITTED, ExerciseAttempt::STATUS_AWAITING_MARKING, ExerciseAttempt::STATUS_MARKED])
+            ->whereHas('exercise.lessonNote', fn ($query) => $query
+                ->when($sessionId, fn ($query) => $query->where('academic_session_id', $sessionId))
+                ->when($classId, fn ($query) => $query->where('school_class_id', $classId))
+                ->when($subjectId, fn ($query) => $query->where('subject_id', $subjectId)));
+
+        $lessonNotes = LessonNote::query()
+            ->when($sessionId, fn ($query) => $query->where('academic_session_id', $sessionId))
+            ->when($classId, fn ($query) => $query->where('school_class_id', $classId))
+            ->when($subjectId, fn ($query) => $query->where('subject_id', $subjectId));
+
+        $paymentRows = Payment::with(['student.assignedClass'])
+            ->when($classId, fn ($query) => $query->where('school_class_id', $classId))
+            ->latest()
+            ->take(10)
+            ->get();
+
+        $examRows = Exam::with(['subject', 'schoolClass'])
+            ->withCount(['attempts as submitted_attempts_count' => fn ($query) => $query->where('is_submitted', true)])
+            ->when($classId, fn ($query) => $query->where('school_class_id', $classId))
+            ->when($subjectId, fn ($query) => $query->where('subject_id', $subjectId))
+            ->latest()
+            ->take(10)
+            ->get();
+
+        $exerciseRows = LessonExercise::with(['lessonNote.schoolClass', 'lessonNote.subject'])
+            ->withCount(['attempts', 'attempts as awaiting_marking_count' => fn ($query) => $query->where('status', ExerciseAttempt::STATUS_AWAITING_MARKING)])
+            ->whereHas('lessonNote', fn ($query) => $query
+                ->when($sessionId, fn ($query) => $query->where('academic_session_id', $sessionId))
+                ->when($classId, fn ($query) => $query->where('school_class_id', $classId))
+                ->when($subjectId, fn ($query) => $query->where('subject_id', $subjectId)))
+            ->latest()
+            ->take(10)
+            ->get();
+
+        return view('admin.reports.index', [
+            'sessions' => AcademicSession::latest()->get(),
+            'classes' => SchoolClass::active()->orderBy('level')->orderBy('stream')->get(),
+            'subjects' => Subject::active()->with('schoolClass')->orderBy('name')->get(),
+            'selectedSessionId' => $sessionId,
+            'selectedClassId' => $classId,
+            'selectedSubjectId' => $subjectId,
+            'summary' => [
+                'submitted_exam_attempts' => (clone $submittedExamAttempts)->count(),
+                'average_exam_score' => round((float) (clone $submittedExamAttempts)->avg('percentage'), 1),
+                'exercise_attempts' => (clone $exerciseAttempts)->count(),
+                'awaiting_marking' => (clone $exerciseAttempts)->where('status', ExerciseAttempt::STATUS_AWAITING_MARKING)->count(),
+                'lesson_notes' => (clone $lessonNotes)->count(),
+                'approved_lesson_notes' => (clone $lessonNotes)->where('status', LessonNote::STATUS_APPROVED)->count(),
+                'payments_recorded' => Payment::when($classId, fn ($query) => $query->where('school_class_id', $classId))->count(),
+                'payment_balance' => Payment::when($classId, fn ($query) => $query->where('school_class_id', $classId))->sum('balance'),
+            ],
+            'lessonStatusCounts' => (clone $lessonNotes)
+                ->select('status', DB::raw('count(*) as total'))
+                ->groupBy('status')
+                ->pluck('total', 'status'),
+            'examRows' => $examRows,
+            'exerciseRows' => $exerciseRows,
+            'paymentRows' => $paymentRows,
+        ]);
+    }
+
+    public function exercises(Request $request)
+    {
+        $status = $request->query('status');
+        $exercises = LessonExercise::with(['lessonNote.teacher', 'lessonNote.schoolClass', 'lessonNote.subject'])
+            ->withCount([
+                'questions',
+                'attempts',
+                'attempts as awaiting_marking_count' => fn ($query) => $query->where('status', ExerciseAttempt::STATUS_AWAITING_MARKING),
+                'attempts as marked_count' => fn ($query) => $query->where('status', ExerciseAttempt::STATUS_MARKED),
+            ])
+            ->when($request->filled('school_class_id'), fn ($query) => $query->whereHas('lessonNote', fn ($query) => $query->where('school_class_id', $request->integer('school_class_id'))))
+            ->when($request->filled('subject_id'), fn ($query) => $query->whereHas('lessonNote', fn ($query) => $query->where('subject_id', $request->integer('subject_id'))))
+            ->when($status === 'awaiting_marking', fn ($query) => $query->whereHas('attempts', fn ($query) => $query->where('status', ExerciseAttempt::STATUS_AWAITING_MARKING)))
+            ->latest()
+            ->paginate(20)
+            ->withQueryString();
+
+        $awaitingAttempts = ExerciseAttempt::with(['student.assignedClass', 'exercise.lessonNote.teacher', 'exercise.lessonNote.subject'])
+            ->where('status', ExerciseAttempt::STATUS_AWAITING_MARKING)
+            ->latest('submitted_at')
+            ->take(10)
+            ->get();
+
+        return view('admin.exercises.index', [
+            'exercises' => $exercises,
+            'awaitingAttempts' => $awaitingAttempts,
+            'classes' => SchoolClass::active()->orderBy('level')->orderBy('stream')->get(),
+            'subjects' => Subject::active()->with('schoolClass')->orderBy('name')->get(),
+            'selectedClassId' => $request->query('school_class_id'),
+            'selectedSubjectId' => $request->query('subject_id'),
+            'selectedStatus' => $status,
+        ]);
+    }
+
+    public function teacherWorkload(Request $request)
+    {
+        $activeSession = AcademicSession::active()->first();
+        $teachers = User::with(['teachingSubjects.schoolClass', 'assignedClasses'])
+            ->whereIn('role', ['teacher', 'hod', 'cbt_personnel'])
+            ->withCount([
+                'lessonNotes',
+                'lessonNotes as pending_lesson_notes_count' => fn ($query) => $query->where('status', LessonNote::STATUS_PENDING),
+                'lessonNotes as approved_lesson_notes_count' => fn ($query) => $query->where('status', LessonNote::STATUS_APPROVED),
+                'lessonNotes as returned_lesson_notes_count' => fn ($query) => $query->whereIn('status', [LessonNote::STATUS_RETURNED, LessonNote::STATUS_REJECTED]),
+                'createdExams',
+            ])
+            ->when($request->filled('search'), function ($query) use ($request) {
+                $search = trim((string) $request->query('search'));
+                $query->where(function ($query) use ($search) {
+                    $query->where('first_name', 'like', "%{$search}%")
+                        ->orWhere('last_name', 'like', "%{$search}%")
+                        ->orWhere('portal_id', 'like', "%{$search}%");
+                });
+            })
+            ->orderBy('first_name')
+            ->paginate(20)
+            ->withQueryString();
+
+        $teacherIds = $teachers->pluck('id');
+        $unmarkedCounts = ExerciseAttempt::where('status', ExerciseAttempt::STATUS_AWAITING_MARKING)
+            ->whereHas('exercise.lessonNote', fn ($query) => $query->whereIn('teacher_id', $teacherIds))
+            ->with('exercise.lessonNote')
+            ->get()
+            ->groupBy(fn (ExerciseAttempt $attempt) => $attempt->exercise?->lessonNote?->teacher_id)
+            ->map->count();
+
+        return view('admin.teacher-workload.index', [
+            'teachers' => $teachers,
+            'unmarkedCounts' => $unmarkedCounts,
+            'activeSession' => $activeSession,
+            'search' => $request->query('search'),
+        ]);
+    }
+
+    public function lessonNoteCoverage(Request $request)
+    {
+        $activeSession = AcademicSession::active()->first();
+        $sessionId = $request->integer('academic_session_id') ?: $activeSession?->id;
+        $weeks = range(1, 13);
+
+        $assignments = DB::table('teacher_class_subject')
+            ->join('users', 'users.id', '=', 'teacher_class_subject.teacher_id')
+            ->join('school_classes', 'school_classes.id', '=', 'teacher_class_subject.school_class_id')
+            ->join('subjects', 'subjects.id', '=', 'teacher_class_subject.subject_id')
+            ->select([
+                'users.id as teacher_id',
+                'users.first_name',
+                'users.last_name',
+                'school_classes.id as class_id',
+                'school_classes.level',
+                'school_classes.stream',
+                'subjects.id as subject_id',
+                'subjects.name as subject_name',
+            ])
+            ->when($request->filled('teacher_id'), fn ($query) => $query->where('users.id', $request->integer('teacher_id')))
+            ->when($request->filled('school_class_id'), fn ($query) => $query->where('school_classes.id', $request->integer('school_class_id')))
+            ->when($request->filled('subject_id'), fn ($query) => $query->where('subjects.id', $request->integer('subject_id')))
+            ->orderBy('users.first_name')
+            ->orderBy('school_classes.level')
+            ->orderBy('subjects.name')
+            ->get();
+
+        $notes = LessonNote::where('academic_session_id', $sessionId)
+            ->whereIn('teacher_id', $assignments->pluck('teacher_id')->unique())
+            ->get()
+            ->keyBy(fn (LessonNote $note) => $note->teacher_id . ':' . $note->school_class_id . ':' . $note->subject_id . ':' . $note->week_number);
+
+        return view('admin.lesson-note-coverage.index', [
+            'sessions' => AcademicSession::latest()->get(),
+            'teachers' => User::whereIn('role', ['teacher', 'hod', 'cbt_personnel'])->orderBy('first_name')->get(),
+            'classes' => SchoolClass::active()->orderBy('level')->orderBy('stream')->get(),
+            'subjects' => Subject::active()->with('schoolClass')->orderBy('name')->get(),
+            'selectedSessionId' => $sessionId,
+            'selectedTeacherId' => $request->query('teacher_id'),
+            'selectedClassId' => $request->query('school_class_id'),
+            'selectedSubjectId' => $request->query('subject_id'),
+            'assignments' => $assignments,
+            'notes' => $notes,
+            'weeks' => $weeks,
+        ]);
+    }
+
+    private function needsAttention(): array
+    {
+        return [
+            [
+                'label' => 'Pending lesson notes',
+                'value' => LessonNote::where('status', LessonNote::STATUS_PENDING)->count(),
+                'icon' => 'fa-book-open',
+                'url' => route('admin.lesson-notes.index', ['status' => LessonNote::STATUS_PENDING]),
+            ],
+            [
+                'label' => 'Returned notes',
+                'value' => LessonNote::where('status', LessonNote::STATUS_RETURNED)->count(),
+                'icon' => 'fa-undo',
+                'url' => route('admin.lesson-notes.index', ['status' => LessonNote::STATUS_RETURNED]),
+            ],
+            [
+                'label' => 'Awaiting marking',
+                'value' => ExerciseAttempt::where('status', ExerciseAttempt::STATUS_AWAITING_MARKING)->count(),
+                'icon' => 'fa-pen',
+                'url' => route('admin.exercises', ['status' => 'awaiting_marking']),
+            ],
+            [
+                'label' => 'Live exams',
+                'value' => Exam::where('is_live', true)->count(),
+                'icon' => 'fa-broadcast-tower',
+                'url' => route('admin.monitor'),
+            ],
+            [
+                'label' => 'Unpaid / partial',
+                'value' => Payment::whereIn('status', ['unpaid', 'partial'])->count(),
+                'icon' => 'fa-money-bill-wave',
+                'url' => route('admin.payments'),
+            ],
+            [
+                'label' => 'Pending requests',
+                'value' => ChangeRequest::where('status', 'pending')->count(),
+                'icon' => 'fa-clock',
+                'url' => route('admin.dashboard'),
+            ],
+        ];
+    }
+
+    private function recentActivity()
+    {
+        $lessonActivities = LessonNote::with(['teacher', 'schoolClass', 'subject'])
+            ->latest('updated_at')
+            ->take(8)
+            ->get()
+            ->map(fn (LessonNote $note) => [
+                'time' => $note->updated_at,
+                'title' => $note->title,
+                'meta' => "{$note->teacher?->full_name} / {$note->schoolClass?->full_name} / {$note->subject?->name}",
+                'badge' => $note->statusLabel(),
+                'url' => route('admin.lesson-notes.show', $note),
+            ]);
+
+        $exerciseActivities = ExerciseAttempt::with(['student', 'exercise.lessonNote.subject'])
+            ->whereNotNull('submitted_at')
+            ->latest('submitted_at')
+            ->take(8)
+            ->get()
+            ->map(fn (ExerciseAttempt $attempt) => [
+                'time' => $attempt->submitted_at,
+                'title' => $attempt->exercise?->title ?? 'Exercise submission',
+                'meta' => ($attempt->student?->full_name ?? 'Student') . ' / ' . ($attempt->exercise?->lessonNote?->subject?->name ?? 'Subject'),
+                'badge' => str_replace('_', ' ', $attempt->status),
+                'url' => route('admin.exercises'),
+            ]);
+
+        $examActivities = ExamAttempt::with(['student', 'exam.subject'])
+            ->where('is_submitted', true)
+            ->latest('submitted_at')
+            ->take(8)
+            ->get()
+            ->map(fn (ExamAttempt $attempt) => [
+                'time' => $attempt->submitted_at,
+                'title' => $attempt->exam?->title ?? 'Exam submitted',
+                'meta' => ($attempt->student?->full_name ?? 'Student') . ' / ' . ($attempt->percentage ?? 0) . '%',
+                'badge' => 'exam',
+                'url' => $attempt->exam ? route('admin.results.show', $attempt->exam) : route('admin.results'),
+            ]);
+
+        return $lessonActivities
+            ->merge($exerciseActivities)
+            ->merge($examActivities)
+            ->filter(fn ($item) => $item['time'])
+            ->sortByDesc('time')
+            ->take(10)
+            ->values();
+    }
+
+    private function teacherHighlights()
+    {
+        return User::whereIn('role', ['teacher', 'hod', 'cbt_personnel'])
+            ->withCount([
+                'lessonNotes',
+                'lessonNotes as pending_lesson_notes_count' => fn ($query) => $query->where('status', LessonNote::STATUS_PENDING),
+                'lessonNotes as returned_lesson_notes_count' => fn ($query) => $query->whereIn('status', [LessonNote::STATUS_RETURNED, LessonNote::STATUS_REJECTED]),
+            ])
+            ->orderByDesc('pending_lesson_notes_count')
+            ->orderByDesc('returned_lesson_notes_count')
+            ->take(6)
+            ->get();
+    }
+
+    private function academicHealth(): array
+    {
+        $submittedExamAttempts = ExamAttempt::where('is_submitted', true);
+        $markedExerciseAttempts = ExerciseAttempt::where('status', ExerciseAttempt::STATUS_MARKED);
+        $activeSession = AcademicSession::active()->first();
+
+        $weakClasses = SchoolClass::withCount(['lessonNotes as approved_notes_count' => fn ($query) => $query->where('status', LessonNote::STATUS_APPROVED)])
+            ->take(6)
+            ->get()
+            ->map(function (SchoolClass $class) {
+                $examAverage = ExamAttempt::where('is_submitted', true)
+                    ->whereHas('exam', fn ($query) => $query->where('school_class_id', $class->id))
+                    ->avg('percentage');
+
+                return [
+                    'class' => $class,
+                    'exam_average' => $examAverage === null ? null : round((float) $examAverage, 1),
+                    'approved_notes_count' => $class->approved_notes_count,
+                ];
+            })
+            ->sortBy(fn ($row) => $row['exam_average'] ?? 101)
+            ->take(5)
+            ->values();
+
+        $lowExercisePerformance = ExerciseAttempt::with(['exercise.questions', 'exercise.lessonNote.schoolClass', 'exercise.lessonNote.subject'])
+            ->where('status', ExerciseAttempt::STATUS_MARKED)
+            ->where('is_counted', true)
+            ->latest('marked_at')
+            ->take(500)
+            ->get()
+            ->map(function (ExerciseAttempt $attempt) {
+                $exercise = $attempt->exercise;
+                $note = $exercise?->lessonNote;
+                $totalMarks = (float) ($exercise?->questions?->sum('marks') ?? 0);
+
+                if (!$note || $totalMarks <= 0) {
+                    return null;
+                }
+
+                return [
+                    'key' => $note->school_class_id . ':' . $note->subject_id,
+                    'class' => $note->schoolClass,
+                    'subject' => $note->subject,
+                    'percentage' => ((float) $attempt->total_score / $totalMarks) * 100,
+                ];
+            })
+            ->filter()
+            ->groupBy('key')
+            ->map(function ($rows) {
+                $first = $rows->first();
+
+                return [
+                    'class' => $first['class'],
+                    'subject' => $first['subject'],
+                    'average' => round((float) $rows->avg('percentage'), 1),
+                    'attempts' => $rows->count(),
+                ];
+            })
+            ->sortBy('average')
+            ->take(5)
+            ->values();
+
+        $studentsAwaitingMarking = ExerciseAttempt::with([
+                'student.assignedClass',
+                'exercise.lessonNote.subject',
+                'exercise.lessonNote.teacher',
+            ])
+            ->where('status', ExerciseAttempt::STATUS_AWAITING_MARKING)
+            ->latest('submitted_at')
+            ->take(6)
+            ->get();
+
+        $latestExpectedWeek = LessonNote::query()
+            ->when($activeSession, fn ($query) => $query->where('academic_session_id', $activeSession->id))
+            ->max('week_number') ?: 1;
+        $latestExpectedWeek = min(max((int) $latestExpectedWeek, 1), 13);
+        $expectedWeeks = range(1, $latestExpectedWeek);
+
+        $subjectsMissingLessonNotes = DB::table('teacher_class_subject')
+            ->join('users', 'users.id', '=', 'teacher_class_subject.teacher_id')
+            ->join('school_classes', 'school_classes.id', '=', 'teacher_class_subject.school_class_id')
+            ->join('subjects', 'subjects.id', '=', 'teacher_class_subject.subject_id')
+            ->select([
+                'teacher_class_subject.teacher_id',
+                'teacher_class_subject.school_class_id',
+                'teacher_class_subject.subject_id',
+                'users.first_name',
+                'users.last_name',
+                'school_classes.level',
+                'school_classes.stream',
+                'subjects.name as subject_name',
+            ])
+            ->orderBy('subjects.name')
+            ->get()
+            ->map(function ($assignment) use ($activeSession, $expectedWeeks) {
+                $submittedWeeks = LessonNote::query()
+                    ->when($activeSession, fn ($query) => $query->where('academic_session_id', $activeSession->id))
+                    ->where('teacher_id', $assignment->teacher_id)
+                    ->where('school_class_id', $assignment->school_class_id)
+                    ->where('subject_id', $assignment->subject_id)
+                    ->whereIn('status', [LessonNote::STATUS_PENDING, LessonNote::STATUS_APPROVED, LessonNote::STATUS_RETURNED])
+                    ->pluck('week_number')
+                    ->map(fn ($week) => (int) $week)
+                    ->unique()
+                    ->all();
+                $missingWeeks = collect($expectedWeeks)->diff($submittedWeeks)->values();
+
+                if ($missingWeeks->isEmpty()) {
+                    return null;
+                }
+
+                return [
+                    'teacher' => trim($assignment->first_name . ' ' . $assignment->last_name),
+                    'class' => trim($assignment->level . ' ' . $assignment->stream),
+                    'subject' => $assignment->subject_name,
+                    'missing_weeks' => $missingWeeks->all(),
+                ];
+            })
+            ->filter()
+            ->sortByDesc(fn ($row) => count($row['missing_weeks']))
+            ->take(6)
+            ->values();
+
+        return [
+            'exam_average' => round((float) (clone $submittedExamAttempts)->avg('percentage'), 1),
+            'submitted_exam_attempts' => (clone $submittedExamAttempts)->count(),
+            'exercise_average' => round((float) (clone $markedExerciseAttempts)->avg('total_score'), 1),
+            'marked_exercise_attempts' => (clone $markedExerciseAttempts)->count(),
+            'weak_classes' => $weakClasses,
+            'low_exercise_performance' => $lowExercisePerformance,
+            'students_awaiting_marking' => $studentsAwaitingMarking,
+            'subjects_missing_lesson_notes' => $subjectsMissingLessonNotes,
+        ];
     }
 
     private function getPaymentStats()
@@ -229,11 +677,6 @@ class DashboardController extends Controller
             'totalPaid', 
             'totalBalance'
         ));
-    }
-
-    public function reports()
-    {
-        return view('admin.reports.index');
     }
 
     public function create()

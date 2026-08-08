@@ -3,6 +3,10 @@
 @section('title', 'Review Lesson Note')
 
 @section('content')
+<div class="d-flex justify-content-end mb-3">
+    @include('lesson-notes.partials.subject-export-buttons', ['note' => $note, 'routeName' => $routePrefix.'.lesson-notes.exports.subject', 'includeTeacher' => true])
+</div>
+
 <div class="card mb-3"><div class="card-header d-flex justify-content-between flex-wrap gap-2"><span>{{ $note->title }}</span><span class="badge {{ $note->statusBadgeClass() }}">{{ $note->statusLabel() }}</span></div><div class="card-body">
     <p class="text-muted">{{ $note->teacher?->full_name }} / {{ $note->academicSession?->display_name }} / Week {{ $note->week_number }} / {{ $note->schoolClass?->full_name }} / {{ $note->subject?->name }}</p>
     <h5>{{ $note->topic }}</h5>

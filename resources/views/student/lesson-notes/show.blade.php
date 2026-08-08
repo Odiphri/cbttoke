@@ -3,6 +3,10 @@
 @section('title', 'Read Lesson Note')
 
 @section('content')
+<div class="d-flex justify-content-end mb-3">
+    @include('lesson-notes.partials.subject-export-buttons', ['note' => $note, 'routeName' => (request()->routeIs('prefect.*') ? 'prefect' : 'student').'.lesson-notes.exports.subject'])
+</div>
+
 <div class="card mb-3"><div class="card-body">
     <p class="text-muted">{{ $note->academicSession?->display_name }} / Week {{ $note->week_number }} / {{ $note->subject?->name }}</p>
     <h2 class="h4">{{ $note->topic }}</h2>@if($note->subtopic)<p>{{ $note->subtopic }}</p>@endif
